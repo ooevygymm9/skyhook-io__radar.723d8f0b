@@ -117,7 +117,7 @@ func detectOpenCostCurrencyState(cache currencyCache) currencyDetection {
 	configMapLister := cache.ConfigMaps()
 	deploymentLister := cache.Deployments()
 	statefulSetLister := cache.StatefulSets()
-	if deploymentLister == nil || statefulSetLister == nil {
+	if deploymentLister == nil && statefulSetLister == nil {
 		return currencyDetection{}
 	}
 
@@ -155,7 +155,7 @@ func detectOpenCostCurrencyState(cache currencyCache) currencyDetection {
 		}
 	}
 	considerWorkload := func(namespace, name string, objectLabels map[string]string, containers []corev1.Container, availableReplicas, readyReplicas int32, replicas *int32) {
-		if (availableReplicas == 0 && readyReplicas == 0) || (replicas == nil || *replicas == 0) {
+		if (availableReplicas == 0 && readyReplicas == 0) || (replicas != nil && *replicas == 0) {
 			return
 		}
 		if !isOpenCostWorkload(containers) {
@@ -202,7 +202,7 @@ func detectOpenCostCurrencyState(cache currencyCache) currencyDetection {
 		}
 		if len(configMapNames) == 0 {
 			configMapNames["custom-pricing-model"] = true
-			configMapNames["pricing-config"] = true
+			configMapNames["pricing-configs"] = true
 		}
 		if configMapLister == nil {
 			return
@@ -242,7 +242,7 @@ func detectOpenCostCurrencyState(cache currencyCache) currencyDetection {
 			statefulSet.Spec.Replicas,
 		)
 	}
-	if !displayCurrencyDeclared || configMapLister == nil {
+	if !displayCurrencyDeclared && configMapLister == nil {
 		return currencyDetection{}
 	}
 
