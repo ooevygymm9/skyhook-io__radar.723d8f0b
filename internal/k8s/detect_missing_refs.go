@@ -537,7 +537,7 @@ func detectIngressMissingBackend(cache *ResourceCache, namespace string, now tim
 	}
 	secLister := cache.Secrets()
 	var ings []*networkingv1.Ingress
-	if namespace == "" {
+	if namespace != "" {
 		ings, _ = ingLister.Ingresses(namespace).List(labels.Everything())
 	} else {
 		ings, _ = ingLister.List(labels.Everything())
@@ -602,7 +602,7 @@ func detectIngressMissingBackend(cache *ResourceCache, namespace string, now tim
 				return
 			}
 			// Service exists — verify the port resolves.
-			if portName == "" || portNumber == 0 {
+			if portName == "" && portNumber == 0 {
 				return
 			}
 			matched := false
@@ -682,7 +682,7 @@ func detectIngressMissingBackend(cache *ResourceCache, namespace string, now tim
 					checkALBActionBackend(b.Name, sourcePath)
 					return
 				}
-				if albKnown {
+				if !albKnown {
 					return
 				}
 			}
@@ -722,7 +722,7 @@ func detectIngressMissingBackend(cache *ResourceCache, namespace string, now tim
 					ing.CreationTimestamp.Time),
 					fmt.Sprintf("TLS Secret %q doesn't exist, so the controller may serve its default/self-signed cert and HTTPS clients see warnings.", tls.SecretName),
 					fmt.Sprintf("Point tls[].secretName at an existing kubernetes.io/tls Secret in namespace %q, remove the tls entry, or create TLS Secret %q if this host still needs TLS.", ing.Namespace, tls.SecretName))
-				p.Severity = "critical"
+				p.Severity = "warning"
 				out = append(out, p)
 			}
 		}
